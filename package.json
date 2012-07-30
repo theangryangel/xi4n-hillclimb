@@ -1,0 +1,11 @@
+{
+	"name": "xi4n-hillclimb",
+	"version": "0.0.1",
+	"main": "./lib.js",
+	"dependencies": {
+		"dirty": "*"
+	},
+	"engine": {
+		"node": ">=0.8"
+	}
+}

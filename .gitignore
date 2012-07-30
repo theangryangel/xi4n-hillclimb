@@ -1,0 +1,15 @@
+lib-cov
+*.seed
+*.log
+*.csv
+*.dat
+*.out
+*.pid
+*.gz
+*.log
+*.swp
+.DS_STORE
+Thumbs.db
+Desktop.ini
+node_modules
+user.db
