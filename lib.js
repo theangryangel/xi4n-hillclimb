@@ -1,8 +1,6 @@
 var db = require('dirty')('hillclimb.db');
 var model = require('./model');
 
-var timeout = new Date().getTime() - 30*1000;
-
 exports.init = function()
 {
 	this.log.info('Registering hillclimb plugin');
@@ -10,18 +8,17 @@ exports.init = function()
 	this.client.isiFlags |= this.insim.ISF_MCI;
 
 	this.client.hillclimb = {
-		'current': 0,
-		'queue': []
+		'timeout': 0
 	};
 
-	this.client.on('state:track', function()
+	this.client.on('hillclimb:reload', function()
 	{
 		var now = new Date().getTime();
 
-		if ((now - timeout) <= 5000)
+		if ((now - this.client.hillclimb.timeout) <= 5000)
 			return;
 
-		timeout = now;
+		this.client.hillclimb.timeout = now;
 
 		// new track selected
 		var msgs = [];
@@ -39,6 +36,11 @@ exports.init = function()
 			m.msg = msgs[i];
 			this.client.send(m);
 		}
+	});
+
+	this.client.on('state:track', function()
+	{
+		this.client.emit('hillclimb:reload');
 	});
 
 	this.client.on('state:connnew', function(ucid)
@@ -97,10 +99,6 @@ exports.init = function()
 				msgs.push('/clear');
 				msgs.push('/track FE3');
 
-				// pick a random wind
-				// probably not a popular option
-				msgs.push('/wind ' + (Math.floor(Math.random() * 3).toString()));
-
 				for (var i = 0; i < msgs.length; i++)
 				{
 					var m = new ctx.insim.IS_MST;
@@ -129,10 +127,10 @@ exports.init = function()
 				// new fastest lap - notification needed
 				m.fastest = pkt.ttime;
 
-				var m = new this.insim.IS_MTC;
-				m.ucid = c.ucid;
-				m.text = '^3New Fastest Climb!';
-				this.client.send(m);
+				var success = new this.insim.IS_MTC;
+				success.ucid = c.ucid;
+				success.text = '^3New Fastest Climb!';
+				this.client.send(success);
 			}
 
 			model.save(db, c.uname, m);
