@@ -1,4 +1,4 @@
-export.modules = {
+module.exports = {
 	fetch: function(database, userid)
 	{
 		var m = database.get(this.id(userid));

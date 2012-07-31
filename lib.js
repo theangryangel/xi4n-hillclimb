@@ -1,21 +1,33 @@
 var db = require('dirty')('hillclimb.db');
 var model = require('./model');
 
+var timeout = new Date().getTime() - 30*1000;
+
 exports.init = function()
 {
 	this.log.info('Registering hillclimb plugin');
 
 	this.client.isiFlags |= this.insim.ISF_MCI;
 
+	this.client.hillclimb = {
+		'current': 0,
+		'queue': []
+	};
+
 	this.client.on('state:track', function()
 	{
+		var now = new Date().getTime();
+
+		if ((now - timeout) <= 5000)
+			return;
+
+		timeout = now;
+
 		// new track selected
 		var msgs = [];
 
 		// load layout
-		var m = new this.insim.IS_MST;
 		msgs.push('/axload hillclimb');
-		this.client.send(m);
 
 		// pick a random wind
 		// probably not a popular option
@@ -39,7 +51,7 @@ exports.init = function()
 
 	this.client.on('state:plyrnew', function(plid)
 	{
-		var c = this.client.state.getConnByPlid(pkt.plid);
+		var c = this.client.state.getConnByPlid(plid);
 
 		if (!c)
 			return;
@@ -49,20 +61,59 @@ exports.init = function()
 		model.save(db, c.uname, m);
 	});
 
+	this.client.on('IS_PLP', function(pkt)
+	{
+		var c = this.client.state.getConnByPlid(pkt.plid);
+
+		if (!c)
+			return;
+
+		// spectate the racers
+		var spec = new this.insim.IS_MST;
+		spec.msg = "/spec " + c.uname;
+
+		this.client.send(spec);
+	});
+
 	this.client.on('IS_MSO', function(pkt)
 	{
 		if (pkt.usertype != this.insim.MSO_USER)
 			return;
 
 		// detect and register command handlers
-	});
-
-	this.client.on('IS_FIN', function(pkt)
-	{
-		// Don't count disqualified times
-		if (pkt.confirm & this.client.CONF_DISQ)
+		if (!pkt.msg.indexOf('!rst') < 0)
 			return;
 
+		var m = new this.insim.IS_MST;
+		m.msg = '/end';
+		this.client.send(m);
+
+		setTimeout(function(ctx)
+		{
+			return function() 
+			{
+				var msgs = [];
+
+				msgs.push('/clear');
+				msgs.push('/track FE3');
+
+				// pick a random wind
+				// probably not a popular option
+				msgs.push('/wind ' + (Math.floor(Math.random() * 3).toString()));
+
+				for (var i = 0; i < msgs.length; i++)
+				{
+					var m = new ctx.insim.IS_MST;
+					m.msg = msgs[i];
+					ctx.client.send(m);
+				}
+			}
+		}(this), 6000);
+		
+	});
+
+	this.client.on('IS_RES', function(pkt)
+	{
 		var c = this.client.state.getConnByPlid(pkt.plid);
 
 		if (!c)
@@ -70,21 +121,33 @@ exports.init = function()
 
 		var m = model.fetch(db, c.uname);
 
-		m.last = pkt.ttime;
-		if (pkt.ttime < m.fastest)
+		if (!(pkt.confirm & this.client.CONF_DISQ))
 		{
-			// new fastest lap - notification needed
-			m.fastest = pkt.ttime;
+			m.latest = pkt.ttime;
+			if ((pkt.ttime < m.fastest) || (m.fastest < 0))
+			{
+				// new fastest lap - notification needed
+				m.fastest = pkt.ttime;
+
+				var m = new this.insim.IS_MTC;
+				m.ucid = c.ucid;
+				m.text = '^3New Fastest Climb!';
+				this.client.send(m);
+			}
+
+			model.save(db, c.uname, m);
 		}
 
-		model.save(db, c.uname, m);
+		setTimeout(function(ctx)
+		{
+			return function() 
+			{
+				// spectate the racers
+				var spec = new ctx.insim.IS_MST;
+				spec.msg = "/spec " + c.uname;
 
-		// spectate the racers
-		var spec = new this.insim.IS_MST;
-		spec.msg = "/spec " + c.uname;
-
-		this.client.send(spec);
-
-		// send buttons gui
+				ctx.client.send(spec);
+			}
+		}(this), 2000);
 	});
 }
