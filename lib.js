@@ -1,6 +1,6 @@
-var db = require('dirty')('hillclimb.db');
-var model = require('./model');
-
+var db = require('dirty')('hillclimb.db'),
+	queue = require('./queue'),
+	model = require('./model');
 
 var zeroPad = function(num, count)
 {
@@ -30,7 +30,9 @@ exports.init = function()
 	this.client.isiFlags |= this.insim.ISF_MCI;
 
 	this.client.hillclimb = {
-		'timeout': 0
+		'timeout': 0,
+		'queue': new queue(),
+		'current': 0
 	};
 
 	// one at a time - force it, incase the servers been mis-configured
@@ -100,6 +102,7 @@ exports.init = function()
 		model.save(db, c.uname, m);
 
 		// show gui
+		// gui shows queuing facilities, etc.
 	});
 
 	this.client.on('state:plyrnew', function(plid)
@@ -109,11 +112,24 @@ exports.init = function()
 		if (!c)
 			return;
 
+		// check to see if the player is the next queued player, if not then
+		// spectate
+
 		// force clear any buttons
 		var clear = new this.insim.IS_BFN;
 		clear.ucid = c.ucid;
 		clear.subt = this.insim.BFN_CLEAR;
 		this.client.send(clear);
+	});
+
+	this.client.on('state:plyrleave', function(plid)
+	{
+		var c = this.client.state.getConnByPlid(plid);
+
+		if (!c)
+			return;
+
+		// remove player from queue
 	});
 
 	this.client.on('IS_PLP', function(pkt)
