@@ -1,6 +1,17 @@
 var db = require('dirty')('hillclimb.db');
 var model = require('./model');
 
+var msToHuman = function(ms)
+{
+	var seconds = ((ms / 1000) % 60),
+	minutes = (((ms / 1000) / 60) % 60),
+	hours = ((((ms / 1000) / 60) / 60) % 24);
+
+	return ((hours >= 1) ? zeroPad(Math.floor(hours), 2) + ':' : '') +
+		zeroPad(Math.floor(minutes), 2) + ':' +
+		zeroPad(seconds.toFixed(2), 5);
+}
+
 exports.init = function()
 {
 	this.log.info('Registering hillclimb plugin');
@@ -10,6 +21,11 @@ exports.init = function()
 	this.client.hillclimb = {
 		'timeout': 0
 	};
+
+	// one at a time - force it, incase the servers been mis-configured
+	var m = new this.insim.IS_MST;
+	m.msg = '/carsmax 1';
+	this.client.send(m);
 
 	this.client.on('hillclimb:reload', function()
 	{
@@ -30,6 +46,9 @@ exports.init = function()
 		// probably not a popular option
 		msgs.push('/wind ' + (Math.floor(Math.random() * 3).toString()));
 
+		// night
+		msgs.push('/weather 3');
+
 		for (var i = 0; i < msgs.length; i++)
 		{
 			var m = new this.insim.IS_MST;
@@ -45,10 +64,31 @@ exports.init = function()
 
 	this.client.on('state:connnew', function(ucid)
 	{
+		var c = this.client.state.getConnByPlid(plid);
+
+		if (!c)
+			return;
+
+		var m = model.fetch(db, 'plyr:' + c.uname);
+		var global = model.fetch(db, 'global');
+
+		var msgs = [
+			'Welcome!',
+			'Global Record: ' + msToHuman(global.fastest),
+			'Personal Record: ' + msToHuman(m.fastest),
+		];
+
+		for (var i = 0; i < msgs.length; i++)
+		{
+			var m = new this.insim.IS_MST;
+			m.msg = msgs[i];
+			this.client.send(m);
+		}
+
+		m.seen = new Date().getTime();
+		model.save(db, c.uname, m);
+
 		// show gui
-		// top time
-		// last seen
-		// number of entries
 	});
 
 	this.client.on('state:plyrnew', function(plid)
@@ -58,9 +98,11 @@ exports.init = function()
 		if (!c)
 			return;
 
-		var m = model.fetch(db, c.uname);
-		m.seen = new Date().getTime();
-		model.save(db, c.uname, m);
+		// force clear any buttons
+		var clear = new this.insim.IS_BFN;
+		clear.ucid = c.ucid;
+		clear.subt = this.insim.BFN_CLEAR;
+		this.client.send(clear);
 	});
 
 	this.client.on('IS_PLP', function(pkt)
@@ -70,7 +112,7 @@ exports.init = function()
 		if (!c)
 			return;
 
-		// spectate the racers
+		// spectate the racer
 		var spec = new this.insim.IS_MST;
 		spec.msg = "/spec " + c.uname;
 
@@ -117,23 +159,37 @@ exports.init = function()
 		if (!c)
 			return;
 
-		var m = model.fetch(db, c.uname);
+		var m = model.fetch(db, 'plyr:' + c.uname);
+		var global = model.fetch(db, 'global');
 
 		if (!(pkt.confirm & this.client.CONF_DISQ))
 		{
-			m.latest = pkt.ttime;
+			global.latest = m.latest = pkt.ttime;
 			if ((pkt.ttime < m.fastest) || (m.fastest < 0))
 			{
-				// new fastest lap - notification needed
+				// new personal fastest lap - notification needed
 				m.fastest = pkt.ttime;
 
 				var success = new this.insim.IS_MTC;
 				success.ucid = c.ucid;
-				success.text = '^3New Fastest Climb!';
+				success.text = '^3New Personal Fastest Climb - ' + msToHuman(pkt.ttime);
 				this.client.send(success);
 			}
 
-			model.save(db, c.uname, m);
+			model.save(db, 'plyr:' + c.uname, m);
+
+			if ((pkt.ttime < global.fastest) || (global.fastest < 0))
+			{
+				// new global fastest lap - notification needed
+				global.fastest = pkt.ttime;
+
+				var success = new this.insim.IS_MST;
+				success.ucid = c.ucid;
+				success.text = '^3New Global Fastest Climb by ' + c.uname + ' - ' + msToHuman(pkt.ttime);
+				this.client.send(success);
+			}
+
+			model.save(db, 'global', global);
 		}
 
 		setTimeout(function(ctx)
