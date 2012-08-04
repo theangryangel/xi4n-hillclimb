@@ -124,12 +124,8 @@ exports.init = function()
 
 	this.client.on('state:plyrleave', function(plid)
 	{
-		var c = this.client.state.getConnByPlid(plid);
-
-		if (!c)
-			return;
-
 		// remove player from queue
+		this.client.hillclimb.queue.remove(plid);
 	});
 
 	this.client.on('IS_PLP', function(pkt)
