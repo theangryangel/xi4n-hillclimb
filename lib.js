@@ -1,6 +1,17 @@
 var db = require('dirty')('hillclimb.db');
 var model = require('./model');
 
+
+var zeroPad = function(num, count)
+{
+	var numZeropad = num + '';
+
+	while(numZeropad.length < count)
+		numZeropad = "0" + numZeropad;
+
+	return numZeropad;
+}
+
 var msToHuman = function(ms)
 {
 	var seconds = ((ms / 1000) % 60),
