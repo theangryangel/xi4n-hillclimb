@@ -1,27 +1,9 @@
 var db = require('dirty')('hillclimb.db'),
 	queue = require('./queue'),
-	model = require('./model');
-
-var zeroPad = function(num, count)
-{
-	var numZeropad = num + '';
-
-	while(numZeropad.length < count)
-		numZeropad = "0" + numZeropad;
-
-	return numZeropad;
-}
-
-var msToHuman = function(ms)
-{
-	var seconds = ((ms / 1000) % 60),
-	minutes = (((ms / 1000) / 60) % 60),
-	hours = ((((ms / 1000) / 60) / 60) % 24);
-
-	return ((hours >= 1) ? zeroPad(Math.floor(hours), 2) + ':' : '') +
-		zeroPad(Math.floor(minutes), 2) + ':' +
-		zeroPad(seconds.toFixed(2), 5);
-}
+	model = require('./model'),
+   	misc = require('./misc'),
+	gui = require('./gui'),
+	chatCmds = require('./cmds');
 
 exports.init = function()
 {
@@ -34,11 +16,6 @@ exports.init = function()
 		'queue': new queue(),
 		'current': 0
 	};
-
-	// one at a time - force it, incase the servers been mis-configured
-	var m = new this.insim.IS_MST;
-	m.msg = '/carsmax 1';
-	this.client.send(m);
 
 	this.client.on('hillclimb:reload', function()
 	{
@@ -72,12 +49,18 @@ exports.init = function()
 
 	this.client.on('state:track', function()
 	{
-		this.client.emit('hillclimb:reload');
+		if (this.client.state.flags & this.insim.ISS_GAME)
+			return;
+
+		//this.client.emit('hillclimb:reload');
 	});
 
 	this.client.on('state:connnew', function(ucid)
 	{
-		var c = this.client.state.getConnByPlid(plid);
+		if (ucid <= 0)
+			return;
+
+		var c = this.client.state.getConnByUcid(ucid);
 
 		if (!c)
 			return;
@@ -85,10 +68,13 @@ exports.init = function()
 		var m = model.fetch(db, 'plyr:' + c.uname);
 		var global = model.fetch(db, 'global');
 
+		var wr = misc.msToHuman(global.fastest) + ' (' + global.who + ')';
+		var pb = misc.msToHuman(m.fastest);
+
 		var msgs = [
-			'Welcome!',
-			'Global Record: ' + msToHuman(global.fastest),
-			'Personal Record: ' + msToHuman(m.fastest),
+			'^7Welcome to ' + misc.plugin.name + '!',
+			'^7Global Record: ' + wr,
+			'^7Personal Record: ' + pb,
 		];
 
 		for (var i = 0; i < msgs.length; i++)
@@ -101,8 +87,7 @@ exports.init = function()
 		m.seen = new Date().getTime();
 		model.save(db, c.uname, m);
 
-		// show gui
-		// gui shows queuing facilities, etc.
+		gui.info.call(this, ucid, wr, pb);
 	});
 
 	this.client.on('state:plyrnew', function(plid)
@@ -147,32 +132,32 @@ exports.init = function()
 		if (pkt.usertype != this.insim.MSO_USER)
 			return;
 
-		// detect and register command handlers
-		if (!pkt.msg.indexOf('!rst') < 0)
+		if (pkt.ucid <= 0)
 			return;
 
-		var m = new this.insim.IS_MST;
-		m.msg = '/end';
-		this.client.send(m);
-
-		setTimeout(function(ctx)
+		for (var i in chatCmds)
 		{
-			return function() 
-			{
-				var msgs = [];
+			if (pkt.msg.indexOf(i) < 0)
+				continue;
 
-				msgs.push('/clear');
-				msgs.push('/track FE3');
+			chatCmds[i].call(this, pkt);
+			return;
+		}
+	});
 
-				for (var i = 0; i < msgs.length; i++)
-				{
-					var m = new ctx.insim.IS_MST;
-					m.msg = msgs[i];
-					ctx.client.send(m);
-				}
-			}
-		}(this), 6000);
-		
+	this.client.on('IS_III', function(pkt)
+	{
+		if (pkt.ucid <= 0)
+			return;
+
+		for (var i in chatCmds)
+		{
+			if (pkt.msg.indexOf(i) < 0)
+				continue;
+
+			chatCmds[i].call(this, pkt);
+			return;
+		}
 	});
 
 	this.client.on('IS_RES', function(pkt)
@@ -205,9 +190,9 @@ exports.init = function()
 			{
 				// new global fastest lap - notification needed
 				global.fastest = pkt.ttime;
+				global.who = c.uname;
 
 				var success = new this.insim.IS_MST;
-				success.ucid = c.ucid;
 				success.text = '^3New Global Fastest Climb by ' + c.uname + ' - ' + msToHuman(pkt.ttime);
 				this.client.send(success);
 			}
