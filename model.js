@@ -1,4 +1,15 @@
-module.exports = {
+exports = module.exports = {
+
+	fetchPlyr: function(database, uname)
+	{
+		return exports.fetch(database, 'plyr:' + uname);
+	},
+
+	fetchGlobal: function(database)
+	{
+		return exports.fetch(database, 'global');
+	},
+
 	fetch: function(database, userid)
 	{
 		var m = database.get(this.id(userid));

@@ -12,14 +12,24 @@ exports = module.exports = {
 		gui.info.call(this, pkt.ucid);
 	},
 
+	'!about': function(pkt)
+	{
+		gui.about.call(this, pkt.ucid);
+	},
+
+	'!wr': function(pkt)
+	{
+		gui.stats.call(this, pkt.ucid);
+	},
+
 	'!pb': function(pkt)
 	{
-		gui.info.call(this, pkt.ucid);
+		gui.stats.call(this, pkt.ucid);
 	},
 
 	'!me': function(pkt)
 	{
-		gui.info.call(this, pkt.ucid);
+		gui.stats.call(this, pkt.ucid);
 	},
 
 	'!rst': function(pkt)

@@ -1,5 +1,4 @@
-var db = require('dirty')('hillclimb.db'),
-	queue = require('./queue'),
+var db = require('dirty')(__dirname + '/hillclimb.db'),
 	model = require('./model'),
    	misc = require('./misc'),
 	gui = require('./gui'),
@@ -13,8 +12,8 @@ exports.init = function()
 
 	this.client.hillclimb = {
 		'timeout': 0,
-		'queue': new queue(),
-		'current': 0
+		'current': 0,
+		'database': db,
 	};
 
 	this.client.on('hillclimb:reload', function()
@@ -79,15 +78,15 @@ exports.init = function()
 
 		for (var i = 0; i < msgs.length; i++)
 		{
-			var m = new this.insim.IS_MST;
-			m.msg = msgs[i];
-			this.client.send(m);
+			var msg = new this.insim.IS_MST;
+			msg.msg = msgs[i];
+			this.client.send(msg);
 		}
 
 		m.seen = new Date().getTime();
 		model.save(db, c.uname, m);
 
-		gui.info.call(this, ucid, wr, pb);
+		gui.info.call(this, ucid);
 	});
 
 	this.client.on('state:plyrnew', function(plid)
@@ -110,7 +109,6 @@ exports.init = function()
 	this.client.on('state:plyrleave', function(plid)
 	{
 		// remove player from queue
-		this.client.hillclimb.queue.remove(plid);
 	});
 
 	this.client.on('IS_PLP', function(pkt)
@@ -170,6 +168,8 @@ exports.init = function()
 		var m = model.fetch(db, 'plyr:' + c.uname);
 		var global = model.fetch(db, 'global');
 
+		var text = [];
+
 		if (!(pkt.confirm & this.client.CONF_DISQ))
 		{
 			global.latest = m.latest = pkt.ttime;
@@ -180,7 +180,10 @@ exports.init = function()
 
 				var success = new this.insim.IS_MTC;
 				success.ucid = c.ucid;
-				success.text = '^3New Personal Fastest Climb - ' + msToHuman(pkt.ttime);
+				success.text = '^3New Personal Fastest Climb - ' + misc.msToHuman(pkt.ttime);
+
+				text.push(success.text);
+
 				this.client.send(success);
 			}
 
@@ -193,14 +196,23 @@ exports.init = function()
 				global.who = c.uname;
 
 				var success = new this.insim.IS_MST;
-				success.text = '^3New Global Fastest Climb by ' + c.uname + ' - ' + msToHuman(pkt.ttime);
+				success.text = '^3New Global Fastest Climb by ' + c.uname + ' - ' + misc.msToHuman(pkt.ttime);
+
+				text.push(success.text);
+
 				this.client.send(success);
 			}
 
 			model.save(db, 'global', global);
 		}
 
-		setTimeout(function(ctx)
+		if (text.length <= 0)
+		{
+			text.push('Bad luck. You weren\'t quite fast enough this time.');
+			text.push('Your time was: ' + misc.msToHuman(pkt.ttime));
+		}
+
+		setTimeout(function(ctx, ucid, gui, text)
 		{
 			return function() 
 			{
@@ -209,7 +221,9 @@ exports.init = function()
 				spec.msg = "/spec " + c.uname;
 
 				ctx.client.send(spec);
+
+				gui.breakdown.call(ctx, ucid, text);
 			}
-		}(this), 2000);
+		}(this, pkt.ucid, gui, text), 2000);
 	});
 }
