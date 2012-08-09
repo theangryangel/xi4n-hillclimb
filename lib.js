@@ -224,6 +224,6 @@ exports.init = function()
 
 				gui.breakdown.call(ctx, ucid, text);
 			}
-		}(this, pkt.ucid, gui, text), 2000);
+		}(this, c.ucid, gui, text), 2000);
 	});
 }
